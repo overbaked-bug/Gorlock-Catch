@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>Gorlock Catch 🧺☁️</title>
+
+  <style>
+    body{
+      margin:0;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      background: #cfe9ff;
+      display:flex;
+      justify-content:center;
+      align-items:center;
+      min-height:100vh;
+      overflow:hidden;
+    }
+
+    .wrap{
+      width: 860px;
+      max-width: 95vw;
+      text-align:center;
+      position: relative;
+    }
+
+    h1{ margin: 0 0 6px; font-size: 44px; letter-spacing: -0.5px; }
+    .sub{ margin:0 0 14px; color:#2b3a55; opacity:0.9; font-size: 18px; }
+
+    .stage{
+      position: relative;
+      width: 100%;
+      display:flex;
+      justify-content:center;
+      overflow: visible;
+    }
+
+    canvas{
+      display:block;
+      margin: 0 auto;
+      border-radius: 18px;
+      box-shadow: 0 14px 40px rgba(0,0,0,0.18);
+      touch-action: none;
+      background: transparent;
+    }
+
+    .badge{
+      position:absolute;
+      left: 18px;
+      top: 16px;
+      padding: 10px 14px;
+      border-radius: 14px;
+      background: rgba(255,255,255,0.82);
+      border: 1px solid rgba(0,0,0,0.06);
+      box-shadow: 0 12px 28px rgba(0,0,0,0.12);
+      color: #1f2a44;
+      font-weight: 900;
+      backdrop-filter: blur(6px);
+      pointer-events:none;
+    }
+
+    .hud{
+      margin-top: 12px;
+      display:flex;
+      justify-content: space-between;
+      gap: 12px;
+      color:#1f2a44;
+      font-size: 14px;
+      flex-wrap: wrap;
+    }
+
+    .pill{
+      background: rgba(255,255,255,0.75);
+      border: 1px solid rgba(0,0,0,0.06);
+      border-radius: 999px;
+      padding: 7px 12px;
+      box-shadow: 0 8px 18px rgba(0,0,0,0.08);
+      font-weight: 700;
+    }
+
+    .btnrow{ margin-top: 12px; display:flex; justify-content:center; gap:10px; flex-wrap:wrap; }
+    .btn{
+      border:0;
+      border-radius: 12px;
+      padding: 10px 16px;
+      cursor:pointer;
+      font-weight: 900;
+      background:#2f7de1;
+      color:white;
+      box-shadow: 0 10px 20px rgba(47,125,225,0.25);
+      font-size: 14px;
+    }
+    .btn.secondary{
+      background:#111827;
+      box-shadow: 0 10px 20px rgba(17,24,39,0.18);
+    }
+
+    .overlay{
+      position:absolute;
+      inset: 0;
+      display:none;
+      align-items:center;
+      justify-content:center;
+      z-index: 5;
+    }
+
+    .panel{
+      width: min(620px, 92vw);
+      background: rgba(255,255,255,0.94);
+      border: 1px solid rgba(0,0,0,0.08);
+      border-radius: 18px;
+      padding: 18px;
+      text-align:left;
+      box-shadow: 0 18px 50px rgba(0,0,0,0.22);
+    }
+
+    .panel h2{ margin:0 0 8px; font-size: 22px; }
+    .panel p{ margin: 6px 0; color:#334155; font-size: 16px; }
+    .panel .btn{ margin-top: 10px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Gorlock Catch 🧺☁️</h1>
+    <p class="sub">Catch the Gorlocks falling from the clouds. Arrow keys or drag to move.</p>
+
+    <div class="stage">
+      <div class="badge">Catch the Gorlocks from the clouds!</div>
+      <canvas id="game"></canvas>
+
+      <div class="overlay" id="overlay">
+        <div class="panel">
+          <h2 id="endTitle">You did it! ☁️✨</h2>
+          <p id="endText"></p>
+          <button class="btn" id="playAgainBtn">Play again</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="hud">
+      <div class="pill">Score: <span id="score">0</span></div>
+      <div class="pill">Misses: <span id="misses">0</span> / <span id="maxMisses">8</span></div>
+      <div class="pill">Goal: <span id="goal">15</span></div>
+      <div class="pill">Mode: Sky (cute)</div>
+    </div>
+
+    <div class="btnrow">
+      <button class="btn" id="startBtn">Start</button>
+      <button class="btn secondary" id="restartBtn">Restart</button>
+    </div>
+  </div>
+
+<script>
+  // ---------------------------
+  // SETTINGS
+  // ---------------------------
+  let CSS_W = 820;
+  let CSS_H = 480;
+
+  const GOAL = 15;
+  const MAX_MISSES = 8;
+
+  const SPAWN_EVERY_MS = 650;
+  const BASE_FALL_SPEED = 2.0;
+
+  // ---------------------------
+  // CANVAS + UI
+  // ---------------------------
+  const canvas = document.getElementById("game");
+  const ctx = canvas.getContext("2d");
+
+  const scoreEl = document.getElementById("score");
+  const missesEl = document.getElementById("misses");
+  const maxMissesEl = document.getElementById("maxMisses");
+  const goalEl = document.getElementById("goal");
+
+  const overlay = document.getElementById("overlay");
+  const endTitle = document.getElementById("endTitle");
+  const endText = document.getElementById("endText");
+
+  goalEl.textContent = GOAL;
+  maxMissesEl.textContent = MAX_MISSES;
+
+  // Image (place meme.png next to this HTML)
+  const faceImg = new Image();
+  faceImg.src = "meme.png";
+
+  // ---------------------------
+  // GAME STATE
+  // ---------------------------
+  let running = false;
+  let score = 0;
+  let misses = 0;
+
+  const keys = { left:false, right:false };
+  let lastTs = 0;
+  let spawnTimer = 0;
+
+  const basket = {
+    w: 140,
+    h: 26,
+    x: CSS_W/2 - 70,
+    y: CSS_H - 64,
+    speed: 8
+  };
+
+  const drops = [];
+  let clouds = []; // initialized after first resize
+
+  // ---------------------------
+  // HELPERS
+  // ---------------------------
+  function clampBasket(){
+    if (basket.x < 0) basket.x = 0;
+    if (basket.x + basket.w > CSS_W) basket.x = CSS_W - basket.w;
+  }
+
+  function initClouds(){
+    clouds = Array.from({length: 6}, () => ({
+      x: Math.random() * CSS_W,
+      y: 30 + Math.random() * 140,
+      s: 0.85 + Math.random() * 1.25,
+      vx: 0.20 + Math.random() * 0.35
+    }));
+  }
+
+  function resizeCanvas(){
+    const dpr = window.devicePixelRatio || 1;
+
+    const maxW = Math.min(860, window.innerWidth - 24);
+    const maxH = Math.min(520, window.innerHeight * 0.62);
+
+    const aspect = 820 / 480;
+
+    CSS_W = maxW;
+    CSS_H = Math.min(maxH, Math.round(maxW / aspect));
+
+    canvas.style.width = CSS_W + "px";
+    canvas.style.height = CSS_H + "px";
+
+    canvas.width = Math.floor(CSS_W * dpr);
+    canvas.height = Math.floor(CSS_H * dpr);
+
+    // draw using CSS pixel coords
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    // keep basket on-screen after resize
+    basket.y = CSS_H - 64;
+    clampBasket();
+
+    // (re)spawn clouds to fit new size
+    initClouds();
+
+    // optional: clear drops that are now off-screen after resize
+    for (let i = drops.length - 1; i >= 0; i--) {
+      if (drops[i].x < -50 || drops[i].x > CSS_W + 50) drops.splice(i, 1);
+    }
+  }
+
+  window.addEventListener("resize", resizeCanvas);
+
+  // IMPORTANT: first call happens AFTER basket exists
+  resizeCanvas();
+
+  // ---------------------------
+  // INPUT
+  // ---------------------------
+  window.addEventListener("keydown", (e) => {
+    const k = e.key;
+    if (k === "ArrowLeft" || k.toLowerCase() === "a") keys.left = true;
+    if (k === "ArrowRight" || k.toLowerCase() === "d") keys.right = true;
+  });
+
+  window.addEventListener("keyup", (e) => {
+    const k = e.key;
+    if (k === "ArrowLeft" || k.toLowerCase() === "a") keys.left = false;
+    if (k === "ArrowRight" || k.toLowerCase() === "d") keys.right = false;
+  });
+
+  let dragging = false;
+  canvas.addEventListener("pointerdown", (e) => { dragging = true; moveBasketToPointer(e); });
+  canvas.addEventListener("pointermove", (e) => { if (dragging) moveBasketToPointer(e); });
+  window.addEventListener("pointerup", () => dragging = false);
+
+  function moveBasketToPointer(e){
+    const rect = canvas.getBoundingClientRect();
+    const px = (e.clientX - rect.left) * (CSS_W / rect.width);
+    basket.x = px - basket.w/2;
+    clampBasket();
+  }
+
+  // ---------------------------
+  // SPAWNING
+  // ---------------------------
+  function pickCloudX(){
+    const c = clouds[Math.floor(Math.random() * clouds.length)];
+    return c.x + (Math.random()*110 - 55) * c.s;
+  }
+
+  function spawnDrop(){
+    const size = 60 + Math.random() * 18;
+    drops.push({
+      x: Math.max(20, Math.min(CSS_W - 20, pickCloudX())),
+      y: -30,
+      vy: BASE_FALL_SPEED + Math.random()*1.6 + (score * 0.03),
+      size,
+      wobble: Math.random()*Math.PI*2,
+      wobbleSpeed: 0.04 + Math.random()*0.05,
+      rot: (Math.random()*0.5 - 0.25),
+      vr: (Math.random()*0.02 - 0.01)
+    });
+  }
+
+  // ---------------------------
+  // GAME FLOW
+  // ---------------------------
+  function startGame(){
+    running = true;
+    overlay.style.display = "none";
+    lastTs = 0;
+    spawnTimer = 0;
+    requestAnimationFrame(loop);
+  }
+
+  function resetGame(){
+    score = 0;
+    misses = 0;
+    drops.length = 0;
+
+    basket.x = CSS_W/2 - basket.w/2;
+    basket.y = CSS_H - 64;
+    clampBasket();
+
+    scoreEl.textContent = score;
+    missesEl.textContent = misses;
+    overlay.style.display = "none";
+
+    startGame();
+  }
+
+  function endGame(won){
+    running = false;
+    overlay.style.display = "flex";
+    if(won){
+      endTitle.textContent = "You did it! ☁️✨";
+      endText.textContent = `You caught ${score} Gorlocks. Your basket skills are elite.`;
+    } else {
+      endTitle.textContent = "Too many misses 😭";
+      endText.textContent = `You caught ${score}. Try again and don’t let them hit the ground!`;
+    }
+  }
+
+  // ---------------------------
+  // UPDATE + DRAW
+  // ---------------------------
+  function update(dt){
+    // basket movement
+    if(keys.left) basket.x -= basket.speed;
+    if(keys.right) basket.x += basket.speed;
+    clampBasket();
+
+    // clouds drift
+    clouds.forEach(c => {
+      c.x += c.vx;
+      if(c.x > CSS_W + 140) c.x = -140;
+    });
+
+    // spawn drops
+    spawnTimer += dt;
+    while (spawnTimer >= SPAWN_EVERY_MS) {
+      spawnDrop();
+      spawnTimer -= SPAWN_EVERY_MS;
+    }
+
+    // drops movement + collisions
+    for(let i = drops.length - 1; i >= 0; i--){
+      const d = drops[i];
+      d.wobble += d.wobbleSpeed;
+      d.x += Math.sin(d.wobble) * 0.6;
+      d.y += d.vy;
+      d.rot += d.vr;
+
+      const caught =
+        d.y + d.size*0.35 >= basket.y &&
+        d.y - d.size*0.35 <= basket.y + basket.h &&
+        d.x >= basket.x &&
+        d.x <= basket.x + basket.w;
+
+      if(caught){
+        drops.splice(i, 1);
+        score++;
+        scoreEl.textContent = score;
+        if(score >= GOAL) endGame(true);
+        continue;
+      }
+
+      if(d.y > CSS_H + 40){
+        drops.splice(i, 1);
+        misses++;
+        missesEl.textContent = misses;
+        if(misses >= MAX_MISSES) endGame(false);
+      }
+    }
+  }
+
+  function draw(){
+    // sky gradient
+    const g = ctx.createLinearGradient(0,0,0,CSS_H);
+    g.addColorStop(0, "#93d3ff");
+    g.addColorStop(0.6, "#d9f1ff");
+    g.addColorStop(1, "#ffffff");
+    ctx.fillStyle = g;
+    ctx.fillRect(0,0,CSS_W,CSS_H);
+
+    // sun
+    ctx.beginPath();
+    ctx.arc(90, 80, 30, 0, Math.PI*2);
+    ctx.fillStyle = "rgba(255, 224, 130, 0.95)";
+    ctx.fill();
+
+    // clouds
+    clouds.forEach(c => drawCloud(c.x, c.y, 110*c.s, 52*c.s));
+
+    // ground hint
+    ctx.fillStyle = "rgba(40, 60, 90, 0.10)";
+    ctx.fillRect(0, CSS_H-36, CSS_W, 36);
+
+    // basket
+    drawBasket(basket.x, basket.y, basket.w, basket.h);
+
+    // falling faces
+    drops.forEach(d => {
+      const s = d.size;
+      if(faceImg.complete && faceImg.naturalWidth > 0){
+        ctx.save();
+        ctx.translate(d.x, d.y);
+        ctx.rotate(d.rot);
+        ctx.shadowColor = "rgba(0,0,0,0.18)";
+        ctx.shadowBlur = 8;
+        ctx.drawImage(faceImg, -s/2, -s/2, s, s);
+        ctx.restore();
+      } else {
+        ctx.font = `${s}px Arial`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillStyle = "#1f2a44";
+        ctx.fillText("🙂", d.x, d.y);
+      }
+    });
+  }
+
+  function drawCloud(x, y, w, h){
+    ctx.save();
+    ctx.translate(x, y);
+
+    ctx.shadowColor = "rgba(0,0,0,0.06)";
+    ctx.shadowBlur = 12;
+    ctx.shadowOffsetY = 6;
+
+    ctx.fillStyle = "rgba(255,255,255,0.95)";
+    ctx.beginPath();
+
+    const r1 = h*0.55, r2 = h*0.45, r3 = h*0.50, r4 = h*0.40;
+
+    ctx.arc(-w*0.25,  0,      r2, 0, Math.PI*2);
+    ctx.arc(-w*0.05, -h*0.18, r3, 0, Math.PI*2);
+    ctx.arc( w*0.18, -h*0.12, r1, 0, Math.PI*2);
+    ctx.arc( w*0.32,  0,      r4, 0, Math.PI*2);
+
+    ctx.rect(-w*0.45, 0, w*0.95, h*0.65);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.shadowBlur = 0;
+    ctx.globalAlpha = 0.18;
+    ctx.fillStyle = "#ffffff";
+    ctx.beginPath();
+    ctx.ellipse(-w*0.05, -h*0.12, w*0.28, h*0.18, 0, 0, Math.PI*2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+
+    ctx.restore();
+  }
+
+  function drawBasket(x,y,w,h){
+    ctx.save();
+    ctx.shadowColor = "rgba(0,0,0,0.18)";
+    ctx.shadowBlur = 10;
+
+    ctx.fillStyle = "#C08A52";
+    roundRect(ctx, x, y, w, h, 10);
+    ctx.fill();
+
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = "#9C6A3A";
+    roundRect(ctx, x-6, y-10, w+12, 12, 8);
+    ctx.fill();
+
+    ctx.strokeStyle = "rgba(0,0,0,0.12)";
+    ctx.lineWidth = 1;
+    for(let i=0; i<w; i+=10){
+      ctx.beginPath();
+      ctx.moveTo(x+i, y);
+      ctx.lineTo(x+i, y+h);
+      ctx.stroke();
+    }
+
+    ctx.strokeStyle = "rgba(156,106,58,0.75)";
+    ctx.lineWidth = 5;
+    ctx.beginPath();
+    ctx.arc(x+w/2, y-6, w*0.35, Math.PI, 0);
+    ctx.stroke();
+
+    ctx.restore();
+  }
+
+  function roundRect(ctx, x, y, w, h, r){
+    const rr = Math.min(r, w/2, h/2);
+    ctx.beginPath();
+    ctx.moveTo(x+rr, y);
+    ctx.lineTo(x+w-rr, y);
+    ctx.quadraticCurveTo(x+w, y, x+w, y+rr);
+    ctx.lineTo(x+w, y+h-rr);
+    ctx.quadraticCurveTo(x+w, y+h, x+w-rr, y+h);
+    ctx.lineTo(x+rr, y+h);
+    ctx.quadraticCurveTo(x, y+h, x, y+h-rr);
+    ctx.lineTo(x, y+rr);
+    ctx.quadraticCurveTo(x, y, x+rr, y);
+    ctx.closePath();
+  }
+
+  function loop(ts){
+    if(!running){ draw(); return; }
+    if(!lastTs) lastTs = ts;
+    const dt = ts - lastTs;
+    lastTs = ts;
+
+    update(dt);
+    draw();
+    requestAnimationFrame(loop);
+  }
+
+  // Buttons
+  document.getElementById("startBtn").addEventListener("click", startGame);
+  document.getElementById("restartBtn").addEventListener("click", resetGame);
+  document.getElementById("playAgainBtn").addEventListener("click", resetGame);
+
+  // Initial idle draw
+  draw();
+</script>
+</body>
+</html>
